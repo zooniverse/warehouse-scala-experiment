@@ -13,17 +13,24 @@ object MetadataJsonProtocol extends DefaultJsonProtocol {
 
 import MetadataJsonProtocol._
 
-case class Annotation(task: String, value: String, tool: Option[Integer], details: Option[List[Details]], filters: Option[Map[String,String]])
+case class Annotation(task: String, value: String, tool: Option[Integer], details: Option[List[String]], filters: Option[Map[String,String]])
 
 object AnnotationJsonProtocol extends DefaultJsonProtocol {
   implicit object AnnotationJsonFormat extends RootJsonFormat[Annotation] {
     def read(value: JsValue) = {
       value.asJsObject.getFields("task", "value", "f") match {
-        case Seq(JsString(task), JsString(value)) => Annotation(task, value, None, None)
+        case Seq(JsString(task), JsString(value)) => Annotation(task, value, None, None, None)
         case Seq(JsString(task), JsObject(value)) => {
-          value.getFields("choise an")
+          value.getFields("choice", "answers", "filters") match {
+            case Seq(JsString(choice), JsObject(answers), JsObject(filters)) => {
+              Annotation(task, choice, None, Some(List(answers.toJson)), Some(filter.convertTo[Map[String,String]]))
+            }
+            case _ => deserializationError("Incorrect Format for Survey Task")
+          }
         }
-        case Seq(JsString(task), JsArray(value)) = 
+        case Seq(JsString(task), JsArray(value)) => {
+
+        }
     }
 }
 
