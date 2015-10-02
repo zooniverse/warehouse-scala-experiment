@@ -1,125 +1,10 @@
 import org.apache.spark.{SparkContext, SparkConf}
 import org.apache.spark.SparkContext._
-import org.apache.spark.sql.{SQLContext, DataFrame}
+import org.apache.spark.sql.{SQLContext, DataFrame, Row}
 import org.apache.spark.sql.functions._
 import com.databricks.spark.avro._
 import spray.json._
-
-case class Metadata(viewport: Option[Map[String, Int]], started_at: Option[String], finished_at: Option[String], user_agent: Option[String], utc_offset: Option[String], user_language: Option[String], subject_dimensions: Option[List[Option[Map[String,Int]]]])
-
-object MetadataJsonProtocol extends DefaultJsonProtocol {
-  implicit val metadataFormat = jsonFormat7(Metadata)
-}
-
 import MetadataJsonProtocol._
-
-//abstract class SurveyAnswer extends Product
-//case class SingleAnswer(answer: String) extends SurveyAnswer
-//case class MultiAnswer(answer: Vector[String]) extends SurveyAnswer
-
-//object SurveyAnswerJsonProtocol extends DefaultJsonProtocol {
-//implicit object SurveyAnswerJsonFormat extends RootJsonFormat[SurveyAnswer] {
-//def read(value: JsValue) = value match {
-//case JsString(answer) => SingleAnswer(answer)
-//case JsArray(answer) => MultiAnswer(answer.map(_.convertTo[String]))
-//case _ => deserializationError("Incorrect Format for Survey Task")
-//}
-//
-//def write(value: SurveyAnswer) = value match {
-//case SingleAnswer(value) => JsString(value)
-//case MultiAnswer(value) => JsArray(value.map(JsString(_)))
-//}
-//}
-//}
-
-//import SurveyAnswerJsonProtocol._
-
-// This is an ugly case class because Spark doesn't support Union types yet, it should eventually be refactored into:
-// abstract class Annotation
-// case class SimpleAnnotation(task: String, value: Int) extends Annotation
-// case class SurveyAnnotation(task: String, choice: String, answers: Map[String, SurveyAnswer], filters: Map[String, String]) extends Annotation
-// case class DrawingAnnotation(task: String, marking: Vector[(Double, Double)], frame: Int, tool: Int, details: Vector[Int]) extends Annotation
-
-case class Annotation(task: String, value: Option[Int],
-                      choice: Option[String], answers: Option[Map[String, Vector[String]]], filters: Option[Map[String, String]],
-                      marking: Option[Vector[(Double, Double)]], frame: Option[Int], tool: Option[Int], details: Option[Vector[Int]])
-
-object AnnotationJsonProtocol extends DefaultJsonProtocol {
-  def simpleAnnotation(task: String, value: Int) = {
-    Annotation(task, Some(value), None, None, None, None, None, None, None)
-  }
-
-  def surveyAnnotation(task: String, choice: String, answers: Map[String, Vector[String]], filters: Map[String, String]) = {
-    Annotation(task, None, Some(choice), Some(answers), Some(filters), None, None, None, None)
-  }
-
-  def drawingAnnotation(task: String, marking: Vector[(Double, Double)], frame: Int, tool: Int, details: Vector[Int]) = {
-    Annotation(task, None, None, None, None, Some(marking), Some(tool), Some(frame), Some(details))
-  }
-
-  def readAnnotation(taskValue: Seq[JsValue]) : Seq[Annotation] = taskValue match {
-    case Seq(JsString(task), JsNumber(value)) => Seq(simpleAnnotation(task, value.intValue()))
-    case Seq(JsString(task), JsObject(value)) => {
-      JsObject(value).getFields("choice", "answers", "filters") match {
-        case Seq(JsString(choice), JsObject(answers), filters) => {
-          val ans = answers.mapValues(_ match {
-                                        case JsString(answer) => Vector(answer)
-                                        case JsArray(answer) => answer.map(_.convertTo[String])
-                                        case _ => deserializationError("Incorrect Format for Survey Task")
-                                      })
-          Seq(surveyAnnotation(task, choice, ans, filters.convertTo[Map[String,String]]))
-        }
-        case _ => deserializationError("Incorrect Format for Survey Task")
-      }
-    }
-    case Seq(JsString(task), JsArray(values)) => {
-      values.flatMap(
-        (value: JsValue) => value match {
-          case JsNumber(value) => Seq(simpleAnnotation(task, value.intValue()))
-          case JsObject(value) => {
-            value.get("choice") match {
-              case Some(_) => readAnnotation(Seq(JsString(task), JsObject(value)))
-              case None =>  {
-                val tool = value.get("tool").get.convertTo[Int]
-                val frame = value.get("frame").get.convertTo[Int]
-                val details = value.get("details").get.convertTo[Vector[Int]]
-                val points = value.filterKeys((key: String) => key != "tool" && key != "frame" && key != "details")
-                  .groupBy[Char]((keyVal: (String, JsValue)) => keyVal._1.last)
-                  .map((indexPoints: (Char, Map[String, JsValue])) => indexPoints match {
-                         case (index, points) => {
-                           println(index)
-                           println(points)
-                           (points.get("x" + index).get.convertTo[Double], points.get("y" + index).get.convertTo[Double])
-                         }
-                       })
-                  .to[Vector]
-                Seq(drawingAnnotation(task, points, frame, tool, details))
-              }
-            }
-          }
-          case _ => deserializationError("Incorrect Format for Annotation")
-        })
-    }
-    case _ => deserializationError("Incorrect Format for Annotation")
-  }
-
-  implicit object AnnotationJsonFormat extends RootJsonFormat[Vector[Annotation]] {
-    def read(annotations: JsValue) = annotations match {
-      case JsArray(annotations) => {
-        annotations.flatMap((annotation: JsValue) => readAnnotation(annotation.asJsObject.getFields("task", "value")))
-      }
-      case _ => deserializationError("Incorrect Format for Annotation")
-    }
-
-    def write(annotations: Vector[Annotation]) = JsArray(
-      annotations.map(
-        (annotation: Annotation) =>  annotation match {
-          case Annotation(task, Some(value), _, _, _, _, _, _, _) => JsObject("task" -> JsString(task), "value" -> JsNumber(value))
-          case _ => JsString("whoops")
-        }))
-  }
-}
-
 import AnnotationJsonProtocol._
 
 object WarehouseFromDatabase {
@@ -138,7 +23,17 @@ object WarehouseFromDatabase {
 
   def parseMetadata = udf { (metadata: String) => metadata.parseJson.convertTo[Metadata] }
   def parseAnnotations = udf { (annotations: String) => annotations.parseJson.convertTo[Vector[Annotation]] }
-  def taskAnswers = udf { (annotations: Seq[Annotation]) => annotations.map(_.task) }
+  def taskAnswers = udf { (annotations: Seq[Row]) => annotations.map(_.getString(0)) }
+  def dimensions(dimension: String, dimensions: Seq[Map[String,Int]]) : Option[Int] = Option(dimensions) match {
+    case Some(Seq(dimMap, _*)) => dimMap.get(dimension)
+    case Some(Seq(dimMap)) => dimMap.get(dimension)
+    case None => None
+  }
+
+  def seqToString = udf { (seq: Seq[Any]) => Option(seq) match {
+                           case Some(seq) => Some(seq.mkString(","))
+                           case None => None
+                         }}
 
   def main(args: Array[String]) {
     val conf = new SparkConf().setAppName("Warehouse from Panoptes")
@@ -162,7 +57,7 @@ object WarehouseFromDatabase {
       .load
 
     val parsedClassifications = classifications
-      //      .filter(classifications("project_id") === 593)
+      .filter(classifications("project_id") === 3)
       .withColumn("metadata", parseMetadata(classifications("metadata")))
       .withColumn("annotations", parseAnnotations(classifications("annotations")))
       .withColumn("subject_ids", split(classifications("subject_ids"), ","))
@@ -172,16 +67,28 @@ object WarehouseFromDatabase {
       .drop("annotations")
       .drop("metadata")
 
-    val md = parsedClassifications
-      .select("id", "project_id", "workflow_id", "metadata.*")
+    val getClientHeight = udf { column: Seq[Map[String,Int]] => dimensions("clientHeight", column) }
+    val getClientWidth = udf { column: Seq[Map[String,Int]] => dimensions("clientWidth", column) }
+    val getNaturalHeight = udf { column: Seq[Map[String,Int]] => dimensions("naturalHeight", column) }
+    val getNaturalWidth = udf { column: Seq[Map[String,Int]] => dimensions("naturalWidth", column) }
 
-    val as = parsedClassifications
-      .explode("annotations", "annotation"){ annotations: Seq[Annotation] => annotations }
-      .select("id", "project_id", "workflow_id", "annotation")
+    val md = parsedClassifications
+      .withColumn("viewport_height", parsedClassifications("metadata.viewport.height"))
+      .withColumn("viewport_width", parsedClassifications("metadata.viewport.width"))
+      .withColumn("client_height", getClientHeight(parsedClassifications("metadata.subject_dimensions")))
+      .withColumn("client_width", getClientWidth(parsedClassifications("metadata.subject_dimensions")))
+      .withColumn("natural_height", getNaturalHeight(parsedClassifications("metadata.subject_dimensions")))
+      .withColumn("natural_width", getNaturalWidth(parsedClassifications("metadata.subject_dimensions")))
+      .select("id", "project_id", "workflow_id", "viewport_height", "viewport_width", "metadata.started_at", "metadata.finished_at", "metadata.user_agent", "metadata.utc_offset",  "metadata.user_language", "client_height", "client_width", "natural_height", "natural_width")
+
+    val explodedAnnotations = parsedClassifications
+      .withColumn("annotation", explode(parsedClassifications("annotations")))
+
+    val as = explodedAnnotations
+      .select("id", "project_id", "workflow_id", "annotation.task", "annotation.value", "annotation.choice", "annotation.answers", "annotation.filters", "annotation.marking", "annotation.frame", "annotation.tool", "annotation.details")
 
     writeAvro(cs, "Classification", "classifications_output")
     writeAvro(md, "ClassificationMetadata", "metadata_output")
     writeAvro(as, "ClassificationAnnotation", "annotations_output")
-    //   as.collect.foreach(println)
   }
 }
