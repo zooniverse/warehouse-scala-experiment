@@ -46,7 +46,7 @@ object WarehouseFromDatabase {
     val classificationsQuery = sqlString("""(SELECT id, project_id, user_id, workflow_id, updated_at,
                                  |created_at, user_group_id, completed, gold_standard, expert_classifier,
                                  |workflow_version, array_to_string(subject_ids, ',') as subject_ids,
-                                 |metadata::TEXT, annotations::TEXT FROM classifications) as cs""")
+                                 |metadata::TEXT, annotations::TEXT, user_ip FROM classifications) as cs""")
 
     val classifications = sqlContext.read.format("jdbc")
       .options(Map(
@@ -73,13 +73,7 @@ object WarehouseFromDatabase {
     val getNaturalWidth = udf { column: Seq[Map[String,Int]] => dimensions("naturalWidth", column) }
 
     val md = parsedClassifications
-      .withColumn("viewport_height", parsedClassifications("metadata.viewport.height"))
-      .withColumn("viewport_width", parsedClassifications("metadata.viewport.width"))
-      .withColumn("client_height", getClientHeight(parsedClassifications("metadata.subject_dimensions")))
-      .withColumn("client_width", getClientWidth(parsedClassifications("metadata.subject_dimensions")))
-      .withColumn("natural_height", getNaturalHeight(parsedClassifications("metadata.subject_dimensions")))
-      .withColumn("natural_width", getNaturalWidth(parsedClassifications("metadata.subject_dimensions")))
-      .select("id", "project_id", "workflow_id", "viewport_height", "viewport_width", "metadata.started_at", "metadata.finished_at", "metadata.user_agent", "metadata.utc_offset",  "metadata.user_language", "client_height", "client_width", "natural_height", "natural_width")
+      .select("id", "project_id", "workflow_id", "metadata.viewport", "metadata.started_at", "metadata.finished_at", "metadata.user_agent", "metadata.utc_offset",  "metadata.user_language", "metadata.subject_dimensions")
 
     val explodedAnnotations = parsedClassifications
       .withColumn("annotation", explode(parsedClassifications("annotations")))
