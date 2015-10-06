@@ -24,11 +24,6 @@ object WarehouseFromDatabase {
   def parseMetadata = udf { (metadata: String) => metadata.parseJson.convertTo[Metadata] }
   def parseAnnotations = udf { (annotations: String) => annotations.parseJson.convertTo[Vector[Annotation]] }
   def taskAnswers = udf { (annotations: Seq[Row]) => annotations.map(_.getString(0)) }
-  def dimensions(dimension: String, dimensions: Seq[Map[String,Int]]) : Option[Int] = Option(dimensions) match {
-    case Some(Seq(dimMap, _*)) => dimMap.get(dimension)
-    case Some(Seq(dimMap)) => dimMap.get(dimension)
-    case None => None
-  }
 
   def seqToString = udf { (seq: Seq[Any]) => Option(seq) match {
                            case Some(seq) => Some(seq.mkString(","))
@@ -66,11 +61,6 @@ object WarehouseFromDatabase {
       .withColumn("answered_tasks", taskAnswers(parsedClassifications("annotations")))
       .drop("annotations")
       .drop("metadata")
-
-    val getClientHeight = udf { column: Seq[Map[String,Int]] => dimensions("clientHeight", column) }
-    val getClientWidth = udf { column: Seq[Map[String,Int]] => dimensions("clientWidth", column) }
-    val getNaturalHeight = udf { column: Seq[Map[String,Int]] => dimensions("naturalHeight", column) }
-    val getNaturalWidth = udf { column: Seq[Map[String,Int]] => dimensions("naturalWidth", column) }
 
     val md = parsedClassifications
       .select("id", "project_id", "workflow_id", "metadata.viewport", "metadata.started_at", "metadata.finished_at", "metadata.user_agent", "metadata.utc_offset",  "metadata.user_language", "metadata.subject_dimensions")
