@@ -59,11 +59,10 @@ object CSVFromWarehouse {
     val inPath = "./project_" + projectID.toString() + "_partitioned.csv"
     val outPath = "./project_" + projectID.toString() + ".csv"
 
-    val header = "id,user_id,updated_at,created_at,user_group_id,completed,gold_standard,expert_classifier,workflow_version,subject_ids,user_ip,answered_tasks,project_id,workflow_id,task,value,choice,answers,filters,marking,frame,tool,details,started_at,finished_at,user_agent,utc_offset,user_language,task_label,tool_label,value_label,viewport_height,viewport_width,client_height,client_width,natural_height,natural_width"
 
     toWrite.write.partitionBy("project_id")
       .format("com.databricks.spark.csv").save(inPath)
-    merge(inPath, outPath, header, true)
+    merge(inPath, outPath, fields, true)
   }
 
   def parseStrings = udf { strings: String => strings.parseJson.convertTo[Map[String,String]] }
@@ -76,6 +75,8 @@ object CSVFromWarehouse {
     }
     strings.get(key).getOrElse("").stripMargin.replaceAll("\n", " ")
   }
+
+  def fields = "id,user_id,updated_at,created_at,user_group_id,completed,gold_standard,expert_classifier,workflow_version,subject_ids,user_ip,answered_tasks,project_id,workflow_id,task,value,choice,answers,filters,marking,frame,tool,details,started_at,finished_at,user_agent,utc_offset,user_language,task_label,tool_label,value_label,viewport_height,viewport_width,client_height,client_width,natural_height,natural_width"
 
   def main(args: Array[String]) {
     val conf = new SparkConf().setAppName("CSV from Warehouse")
@@ -124,21 +125,18 @@ object CSVFromWarehouse {
       .withColumn("tool_label", getTool(joined("strings"), joined("task"), joined("tool")))
       .withColumn("value_label", getAnswer(joined("strings"), joined("task"), joined("value")))
 
-    writeCSV(withWorkflowInfo.withColumn("viewport_height", joined("viewport.height"))
-               .withColumn("viewport_width", joined("viewport.width"))
-               .withColumn("client_height", getClientHeight(joined("subject_dimensions")))
-               .withColumn("client_width", getClientWidth(joined("subject_dimensions")))
-               .withColumn("natural_height", getNaturalHeight(joined("subject_dimensions")))
-               .withColumn("natural_width", getNaturalWidth(joined("subject_dimensions")))
-               .withColumn("marking", seqToString(joined("marking")))
-               .withColumn("details", seqToString(joined("details")))
-               .withColumn("subject_ids", seqToString(joined("subject_ids")))
-               .withColumn("answered_tasks", seqToString(joined("answered_tasks")))
-               .drop("viewport")
-               .drop("subject_dimensions")
-               .drop("strings")
-               .drop("wid"),
-             3)
+    val exploded = withWorkflowInfo.withColumn("viewport_height", joined("viewport.height"))
+      .withColumn("viewport_width", joined("viewport.width"))
+      .withColumn("client_height", getClientHeight(joined("subject_dimensions")))
+      .withColumn("client_width", getClientWidth(joined("subject_dimensions")))
+      .withColumn("natural_height", getNaturalHeight(joined("subject_dimensions")))
+      .withColumn("natural_width", getNaturalWidth(joined("subject_dimensions")))
+      .withColumn("marking", seqToString(joined("marking")))
+      .withColumn("details", seqToString(joined("details")))
+      .withColumn("subject_ids", seqToString(joined("subject_ids")))
+      .withColumn("answered_tasks", seqToString(joined("answered_tasks")))
+
+    writeCSV(exploded.select(fields.split(",").map(exploded(_)) : _*), 3)
   }
 }
 

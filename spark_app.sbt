@@ -11,6 +11,7 @@ libraryDependencies += "org.apache.spark" % "spark-streaming-kafka_2.10" % "1.5.
 libraryDependencies += "com.databricks" %% "spark-avro" % "2.0.1"
 libraryDependencies += "com.databricks" %% "spark-csv" % "1.2.0"
 libraryDependencies += "org.postgresql" % "postgresql" % "9.4-1200-jdbc41"
+libraryDependencies += "org.apache.kafka" %% "kafka" % "0.8.2.1"
 libraryDependencies += "io.spray" %%  "spray-json" % "1.3.2"
 
 // META-INF discarding
