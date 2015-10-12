@@ -1,13 +1,13 @@
+import kafka.serializer.StringDecoder
 import org.apache.spark.{SparkContext, SparkConf}
 import org.apache.spark.SparkContext._
 import org.apache.spark.sql.{SQLContext, DataFrame, Row}
 import org.apache.spark.sql.functions._
 import org.apache.spark.streaming._
 import com.databricks.spark.avro._
-import kafka.serializer.StringDecoder
-import org.apache.spark.streaming.kafka._
+import org.apache.spark.streaming.kafka.{KafkaUtils}
 import spray.json._
-import MetadataJsonProtocol._
+import ClassificationJsonProtocol._
 
 object WarehouseFromKafka {
 
@@ -25,10 +25,7 @@ object WarehouseFromKafka {
       ssc, kafkaParams, topicsSet)
 
     // Get the lines, split them into words, count the words and print
-    val lines = messages.map(_._2)
-    val words = lines.flatMap(_.split(" "))
-    val wordCounts = words.map(x => (x, 1L)).reduceByKey(_ + _)
-    wordCounts.print()
+    val classifications = messages.map(_._2.parseJson.convertTo[Classification])
 
     // Start the computation
     ssc.start()

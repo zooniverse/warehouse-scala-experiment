@@ -6,6 +6,8 @@ object MetadataJsonProtocol extends DefaultJsonProtocol {
   implicit val metadataFormat = jsonFormat7(Metadata)
 }
 
+import MetadataJsonProtocol._
+
 //abstract class SurveyAnswer extends Product
 //case class SingleAnswer(answer: String) extends SurveyAnswer
 //case class MultiAnswer(answer: Vector[String]) extends SurveyAnswer
@@ -109,4 +111,16 @@ object AnnotationJsonProtocol extends DefaultJsonProtocol {
           case _ => JsString("whoops")
         }))
   }
+}
+
+import AnnotationJsonProtocol._
+
+case class Classification(id: Int, user_id: Option[Int], updated_at: Int, created_at: Int,
+                          user_group_id: Option[Int], completed: Boolean, gold_standard: Option[Boolean],
+                          expert_classifier: Int, workflow_version: String, subject_ids: Array[Int],
+                          user_ip: String, project_id: Int, workflow_id: Int, annotations: Vector[Annotation],
+                          metadata: Metadata)
+
+object ClassificationJsonProtocol extends DefaultJsonProtocol {
+  implicit val classificationFormat = jsonFormat15(Classification)
 }
