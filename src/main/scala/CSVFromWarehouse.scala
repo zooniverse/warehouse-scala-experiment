@@ -44,9 +44,10 @@ object CSVFromWarehouse {
   }
 
   def dimensions(dimension: String, dimensions: Seq[Map[String,Int]]) : Option[Int] = Option(dimensions) match {
-    case Some(Seq(dimMap, _*)) => dimMap.get(dimension)
-    case Some(Seq(dimMap)) => dimMap.get(dimension)
+    case Some(Seq(dimMap: Map[String, Int], _*)) => dimMap.get(dimension)
+    case Some(Seq(dimMap: Map[String, Int])) => dimMap.get(dimension)
     case None => None
+    case _ => None
   }
 
   def seqToString = udf { (seq: Seq[Any]) => Option(seq) match {
