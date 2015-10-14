@@ -14,7 +14,7 @@ object CSVFromWarehouse {
     val annotations = sqlContext.read.avro("annotations_output/")
     val metadata = sqlContext.read.avro("metadata_output/")
 
-    CSVExport.export(sqlContext, classifications, annotations, metadata)
+    CSVExport.export(sqlContext, classifications, annotations, metadata, "out.csv", 3)
   }
 }
 

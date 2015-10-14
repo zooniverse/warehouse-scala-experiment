@@ -16,7 +16,7 @@ object DatabaseLoad {
   def parseAnnotations = udf { (annotations: String) => annotations.parseJson.convertTo[Vector[Annotation]] }
   def taskAnswers = udf { (annotations: Seq[Row]) => annotations.map(_.getString(0)) }
 
-  def load(sqlContext: SQLContext, url: String) : Vector[DataFrame] = {
+  def load(sqlContext: SQLContext, url: String, projectID: Option[Int]) : Vector[DataFrame] = {
     val classificationsQuery = sqlString("""(SELECT id, project_id, user_id, workflow_id, updated_at,
                                  |created_at, user_group_id, completed, gold_standard, expert_classifier,
                                  |workflow_version, array_to_string(subject_ids, ',') as subject_ids,
@@ -30,8 +30,12 @@ object DatabaseLoad {
                ))
       .load
 
-    val parsedClassifications = classifications
-      .filter(classifications("project_id") === 3)
+    val filteredClassifications = projectID match {
+      case Some(pid) => classifications.filter(classifications("project_id") === pid)
+      case None => classifications
+    }
+
+    val parsedClassifications = filteredClassifications
       .withColumn("metadata", parseMetadata(classifications("metadata")))
       .withColumn("annotations", parseAnnotations(classifications("annotations")))
       .withColumn("subject_ids", split(classifications("subject_ids"), ","))

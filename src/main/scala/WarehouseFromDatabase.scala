@@ -3,9 +3,6 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.sql.{SQLContext, DataFrame, Row}
 import org.apache.spark.sql.functions._
 import com.databricks.spark.avro._
-import spray.json._
-import MetadataJsonProtocol._
-import AnnotationJsonProtocol._
 
 object WarehouseFromDatabase {
   def writeAvro(df: DataFrame, recordName: String, outputLocation: String): Unit = {
@@ -25,7 +22,7 @@ object WarehouseFromDatabase {
     sqlContext.setConf("spark.sql.avro.compression.codec", "deflate")
     sqlContext.setConf("spark.sql.avro.deflate.level", "5")
 
-    val dbs = DatabaseLoad.load(sqlContext, "jdbc:postgresql://192.168.99.100:5432/panoptes_development?user=panoptes&password=panoptes")
+    val dbs = DatabaseLoad.load(sqlContext, "jdbc:postgresql://192.168.99.100:5432/panoptes_development?user=panoptes&password=panoptes", Some(3))
 
     dbs match {
       case Vector(cs, md, as) => {

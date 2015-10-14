@@ -60,15 +60,13 @@ object CSVExport {
                            case None => None
                          }}
 
-  def writeCSV(df: DataFrame, projectID: Int) {
+  def writeCSV(df: DataFrame, projectID: Int, out: String) {
     val toWrite = df.filter(df("project_id") === projectID)
-    val inPath = "./project_" + projectID.toString() + "_partitioned.csv"
-    val outPath = "./project_" + projectID.toString() + ".csv"
-
+    val inPath = out + "_partitioned"
 
     toWrite.write.partitionBy("project_id")
       .format("com.databricks.spark.csv").save(inPath)
-    merge(inPath, outPath, fields, true)
+    merge(inPath, out, fields, true)
   }
 
   def parseStrings = udf { strings: String => strings.parseJson.convertTo[Map[String,String]] }
@@ -84,7 +82,7 @@ object CSVExport {
 
   def fields = "id,user_id,updated_at,created_at,user_group_id,completed,gold_standard,expert_classifier,workflow_version,subject_ids,user_ip,answered_tasks,project_id,workflow_id,task,value,choice,answers,filters,marking,frame,tool,details,started_at,finished_at,user_agent,utc_offset,user_language,task_label,tool_label,value_label,viewport_height,viewport_width,client_height,client_width,natural_height,natural_width"
 
-  def export(sqlContext: SQLContext, classifications: DataFrame, annotations: DataFrame, metadata: DataFrame) {
+  def export(sqlContext: SQLContext, classifications: DataFrame, annotations: DataFrame, metadata: DataFrame, outPath: String, projectID: Int) {
     val workflowsQuery = "(SELECT w.id as wid, wc.strings::TEXT FROM workflows w JOIN workflow_contents wc ON wc.workflow_id = w.id WHERE wc.language = w.primary_language) as wq"
 
     val workflows = sqlContext.read.format("jdbc")
@@ -134,6 +132,6 @@ object CSVExport {
       .withColumn("subject_ids", seqToString(joined("subject_ids")))
       .withColumn("answered_tasks", seqToString(joined("answered_tasks")))
 
-    writeCSV(exploded.select(fields.split(",").map(exploded(_)) : _*), 3)
+    writeCSV(exploded.select(fields.split(",").map(exploded(_)) : _*), projectID, outPath)
   }
 }
